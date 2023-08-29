@@ -17,7 +17,7 @@ jobs:
       - name: Trigger Child Workflow
         uses: ./.github/workflows  # Path to the folder containing the child workflow
         with:
-          workflow: install-tools.yml  # Name of the child workflow YAML file
+          workflow: tools.yml  # Name of the child workflow YAML file
 
   summarize:
     needs: init-actions
