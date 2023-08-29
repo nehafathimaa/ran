@@ -1,0 +1,27 @@
+name: Install Tools
+
+on:
+  workflow_run:
+    workflows: ["Parent Workflow"]
+    types:
+      - completed
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up Git repository
+        uses: actions/checkout@v2
+
+      - name: Install Maven, Node.js, Java
+        run: |
+          # Install Maven
+          sudo apt-get install maven -y
+
+          # Install Node.js
+          curl -fsSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+
+          # Install Java (OpenJDK)
+          sudo apt-get install openjdk-11-jdk -y
