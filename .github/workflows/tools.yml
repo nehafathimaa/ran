@@ -1,39 +1,23 @@
-name: Parent Workflow
-
-on: workflow_dispatch
+on:
+  workflow_run:
+    workflows: ["Parent Workflow"]
+    types:
+      - completed
 
 jobs:
-  init-actions:
+  install:
     runs-on: ubuntu-latest
 
     steps:
       - name: Set up Git repository
         uses: actions/checkout@v2
 
-      - name: Initialize Manual Actions
+      - name: Install Maven, Node.js, Java
         run: |
-          # Perform any initialization tasks here
-
-      - name: Trigger Child Workflow
-        uses: ./.github/workflows  # Path to the folder containing the child workflow
-        with:
-          workflow: install-tools.yml  # Name of the child workflow YAML file
-
-  summarize:
-    needs: init-actions
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Set up Git repository
-        uses: actions/checkout@v2
-
-      - name: Get Child Workflow's Output
-        id: child_output
-        run: |
-          echo "The child workflow output is: ${{ steps.install.outputs.workflow_run_output }}"
-        
-      - name: Print Summary Report
-        run: |
-          echo "Summary Report:"
-          echo "Installed tools: Maven, Node.js, Java"
-          echo "Child Workflow Output: ${{ steps.child_output.outputs.workflow_run_output }}"
+          # Install Maven
+          sudo apt-get install maven -y
+          # Install Node.js
+          curl -fsSL https://deb.nodesource.com/setup_14.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          # Install Java (OpenJDK)
+          sudo apt-get install openjdk-11-jdk -y
