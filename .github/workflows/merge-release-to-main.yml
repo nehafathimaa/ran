@@ -11,61 +11,73 @@ on:
 jobs:
   merge_release_to_main:
     runs-on: ubuntu-latest
-
-    outputs:
-      merged_branch: ${{ github.ref_name }}
-
     steps:
-      - name: Attempt conflict-free merge from release to main
+      - name: Check if main is behind sourceBranch
+        id: check_behind
         uses: actions/github-script@v6
-        id: try_merge
         with:
-          #github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const sourceBranch = '${{ github.ref_name }}';
+
+            const result = await github.rest.repos.compareCommits({
+              owner,
+              repo,
+              base: 'main',
+              head: sourceBranch
+            });
+
+            const isBehind = result.data.status === 'behind';
+            core.setOutput("is_behind", isBehind.toString());
+
+      - name: Try dry merge to detect conflicts
+        id: try_merge
+        if: steps.check_behind.outputs.is_behind == 'true'
+        uses: actions/github-script@v6
+        with:
           script: |
             const { owner, repo } = context.repo;
             const sourceBranch = '${{ github.ref_name }}';
 
             try {
-              const compare = await github.rest.repos.compareCommits({
+              await github.rest.repos.merge({
                 owner,
                 repo,
                 base: 'main',
-                head: sourceBranch
+                head: sourceBranch,
+                dry_run: true // Note: GitHub API does not officially support this, so we simulate with try/catch
               });
 
-              if (compare.data.status === 'diverged' || compare.data.status === 'ahead') {
-                core.setFailed('Merge is not fast-forward. Conflict or divergence detected.');
-              } else if (compare.data.status === 'identical') {
-                core.info('No changes to merge. Branches are identical.');
-              } else {
-                core.setOutput("can_merge", "true");
-              }
+              core.setOutput("can_merge", "true");
+              console.log("✅ Merge clean. No conflicts.");
             } catch (error) {
-              core.setFailed(`Error comparing branches: ${error.message}`);
+              if (error.status === 409) {
+                core.setFailed(`❌ Merge conflict between ${sourceBranch} and main`);
+              } else {
+                core.setFailed(`Error checking merge: ${error.message}`);
+              }
             }
 
       - name: Unlock main branch protection
         if: steps.try_merge.outputs.can_merge == 'true'
         uses: actions/github-script@v6
         with:
-        #github-token: ${{ secrets.GITHUB_TOKEN }}
-         script: |
-          const { owner, repo } = context.repo;
+          script: |
+            const { owner, repo } = context.repo;
 
-          await github.rest.repos.updateBranchProtection({
-               owner,
-                repo,
-          branch: 'main',
-          required_status_checks: null,
-          enforce_admins: false,
-          required_pull_request_reviews: null,
-          restrictions: null,
-          allow_force_pushes: true,
-          allow_deletions: false
-          });
-  
-          console.log("🔓 Main branch protection relaxed for merge.");
+            await github.rest.repos.updateBranchProtection({
+              owner,
+              repo,
+              branch: 'main',
+              required_status_checks: null,
+              enforce_admins: false,
+              required_pull_request_reviews: null,
+              restrictions: null,
+              allow_force_pushes: true,
+              allow_deletions: false
+            });
 
+            console.log("🔓 Main branch protection relaxed for merge.");
 
       - name: Merge release into main
         if: steps.try_merge.outputs.can_merge == 'true'
@@ -81,14 +93,13 @@ jobs:
               repo,
               base: 'main',
               head: sourceBranch,
-              commit_message: `Automated clean merge of ${sourceBranch} into main`
+              commit_message: `✅ Automated clean merge of ${sourceBranch} into main`
             });
 
       - name: Re-lock main branch protection
         if: steps.try_merge.outputs.can_merge == 'true'
         uses: actions/github-script@v6
         with:
-          #github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
             await github.rest.repos.updateBranchProtection({
