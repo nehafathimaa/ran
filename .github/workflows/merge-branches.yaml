@@ -1,0 +1,17 @@
+name: No-Commit Merge to Main
+
+on:
+  workflow_dispatch:
+
+jobs:
+  merge_release_to_main:
+    uses: ./.github/workflows/merge-release-to-main.yml
+    with:
+      source_branch: ${{ github.ref_name }}
+
+  sync_to_develop:
+    name: Trigger Main to Develop Merge Workflow
+    needs: merge_release_to_main
+    uses: ./.github/workflows/merge-to-develop.yml
+    with:
+      source_branch: ${{ github.ref_name }}
