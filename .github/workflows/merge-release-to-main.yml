@@ -40,9 +40,10 @@ jobs:
           echo "🧪 Simulating merge..."
           git config --global user.email "you@example.com"
           git config --global user.name "GitHub Action"
+          git fetch origin main
           git fetch origin $SOURCE_BRANCH
-          git checkout origin/main -b main-local
-          if git merge --no-commit --no-ff origin/$SOURCE_BRANCH; then
+          git checkout -b main-local origin/main
+          if git merge --no-commit --no-ff origin/$SOURCE_BRANCH --allow-unrelated-histories ; then
             echo "✅ Merge successful"
             echo "CAN_MERGE=true" >> $GITHUB_ENV
           else
