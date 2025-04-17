@@ -1,0 +1,51 @@
+name: Merge main to develop
+
+on:
+  workflow_call:
+    inputs:
+      source_branch:
+        required: true
+        type: string
+
+jobs:
+  merge_main_to_develop:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Merge main into develop
+        uses: actions/github-script@v6
+        with:
+          #github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { repo, owner } = context.repo;
+
+            await github.rest.repos.merge({
+              owner,
+              repo,
+              base: 'develop',
+              head: 'main',
+              commit_message: 'Merging main into develop automatically'
+            });
+
+      - name: Create audit PR (optional trace)
+        uses: actions/github-script@v6
+        with:
+          #github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { repo, owner } = context.repo;
+            const branchName = '${{ inputs.source_branch }}'.split('/').pop();
+
+            const pr = await github.rest.pulls.create({
+              title: `Main to develop trace - ${branchName}`,
+              owner,
+              repo,
+              head: 'develop',
+              base: 'develop'
+            });
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pr.data.number,
+              labels: ['auto-pr']
+            });
