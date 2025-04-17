@@ -11,57 +11,51 @@ on:
 jobs:
   merge_release_to_main:
     runs-on: ubuntu-latest
+    env:
+      SOURCE_BRANCH: ${{ inputs.source_branch }}
+
     steps:
-      - name: Check if main is behind sourceBranch
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Check if main is behind ${{ env.SOURCE_BRANCH }}
         id: check_behind
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const sourceBranch = '${{ github.ref_name }}';
+        run: |
+          echo "🔍 Checking if 'main' is behind '${SOURCE_BRANCH}'..."
+          STATUS=$(gh api repos/${{ github.repository }}/compare/main...${SOURCE_BRANCH} --jq .status)
+          echo "🧪 Status: $STATUS"
 
-            const result = await github.rest.repos.compareCommits({
-              owner,
-              repo,
-              base: 'main',
-              head: sourceBranch
-            });
-
-            const isBehind = result.data.status === 'behind';
-            core.setOutput("is_behind", isBehind.toString());
+          if [[ "$STATUS" == "behind" || "$STATUS" == "diverged" ]]; then
+            echo "IS_BEHIND=true" >> $GITHUB_ENV
+            echo "✅ main is behind or diverged."
+          else
+            echo "IS_BEHIND=false" >> $GITHUB_ENV
+            echo "🛑 main is not behind."
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Try dry merge to detect conflicts
-        id: try_merge
-        if: steps.check_behind.outputs.is_behind == 'true'
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const sourceBranch = '${{ github.ref_name }}';
-
-            try {
-              await github.rest.repos.merge({
-                owner,
-                repo,
-                base: 'main',
-                head: sourceBranch,
-                dry_run: true // Note: GitHub API does not officially support this, so we simulate with try/catch
-              });
-
-              core.setOutput("can_merge", "true");
-              console.log("✅ Merge clean. No conflicts.");
-            } catch (error) {
-              if (error.status === 409) {
-                core.setFailed(`❌ Merge conflict between ${sourceBranch} and main`);
-              } else {
-                core.setFailed(`Error checking merge: ${error.message}`);
-              }
-            }
+        if: env.IS_BEHIND == 'true'
+        run: |
+          echo "🧪 Simulating merge..."
+          git config --global user.email "you@example.com"
+          git config --global user.name "GitHub Action"
+          git fetch origin $SOURCE_BRANCH
+          git checkout origin/main -b main-local
+          if git merge --no-commit --no-ff origin/$SOURCE_BRANCH; then
+            echo "✅ Merge successful"
+            echo "CAN_MERGE=true" >> $GITHUB_ENV
+          else
+            echo "❌ Merge conflict detected!"
+            exit 1
+          fi
 
       - name: Unlock main branch protection
-        if: steps.try_merge.outputs.can_merge == 'true'
+        if: env.CAN_MERGE == 'true'
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
 
@@ -80,15 +74,15 @@ jobs:
             console.log("🔓 Main branch protection relaxed for merge.");
 
       - name: Merge release into main
-        if: steps.try_merge.outputs.can_merge == 'true'
+        if: env.CAN_MERGE == 'true'
         uses: actions/github-script@v6
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
-            const sourceBranch = '${{ github.ref_name }}';
+            const sourceBranch = '${{ env.SOURCE_BRANCH }}';
 
-            const result = await github.rest.repos.merge({
+            await github.rest.repos.merge({
               owner,
               repo,
               base: 'main',
@@ -97,9 +91,10 @@ jobs:
             });
 
       - name: Re-lock main branch protection
-        if: steps.try_merge.outputs.can_merge == 'true'
+        if: env.CAN_MERGE == 'true'
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const { owner, repo } = context.repo;
             await github.rest.repos.updateBranchProtection({
